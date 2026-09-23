@@ -1,3 +1,3 @@
 pub mod initialize_policy;
 
-pub use initialize_policy::InitializePolicy;
+pub use initialize_policy::*;
