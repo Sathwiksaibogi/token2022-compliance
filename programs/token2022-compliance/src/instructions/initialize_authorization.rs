@@ -46,5 +46,4 @@ pub fn initialize_authorization_handler(
     ctx.accounts.authorization.status = AuthorizationStatus::Unauthorized;
     ctx.accounts.authorization.bump = ctx.bumps.authorization;
     Ok(())
-    
 }
