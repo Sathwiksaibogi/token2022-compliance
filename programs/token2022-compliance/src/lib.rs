@@ -18,11 +18,18 @@ pub mod token2022_compliance {
         daily_transfer_limit: u64,
         expires_at: i64,
     ) -> Result<()> {
-        instructions::initialize_policy::handler(
+        instructions::initialize_policy::initialize_policy_handler(
             ctx,
             max_transfer_amount,
             daily_transfer_limit,
             expires_at,
         )
+    }
+
+    pub fn initialize_authorization(
+        ctx: Context<InitializeAuthorization>,
+        wallet: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_authorization::initialize_authorization_handler(ctx, wallet)
     }
 }

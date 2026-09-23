@@ -36,3 +36,14 @@ pub struct InitializeAuthorization<'info> {
 
     pub system_program: Program<'info, System>,
 }
+
+pub fn initialize_authorization_handler(
+    ctx: Context<InitializeAuthorization>,
+    wallet: Pubkey,
+) -> Result<()> {
+    ctx.accounts.authorization.mint = ctx.accounts.mint.key();
+    ctx.accounts.authorization.wallet = wallet;
+    ctx.accounts.authorization.status = AuthorizationStatus::Unauthorized;
+    ctx.accounts.authorization.bump = ctx.bumps.authorization;
+    Ok(())
+}

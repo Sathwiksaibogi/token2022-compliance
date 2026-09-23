@@ -28,7 +28,7 @@ pub struct InitializePolicy<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub fn initialize_policy_handler(
     ctx: Context<InitializePolicy>,
     max_transfer_amount: u64,
     daily_transfer_limit: u64,
