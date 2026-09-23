@@ -36,3 +36,19 @@ pub struct InitializeTransferStats<'info> {
 
     pub system_program: Program<'info, System>,
 }
+pub fn initialize_transfer_stats_handler(
+    ctx: Context<InitializeTransferStats>,
+    wallet: Pubkey,
+) -> Result<()> {
+    let clock = Clock::get()?;
+    let day_index = clock.unix_timestamp / 86_400;
+
+    ctx.accounts.transfer_stats.mint = ctx.accounts.mint.key();
+    ctx.accounts.transfer_stats.wallet = wallet;
+    ctx.accounts.transfer_stats.day_index = day_index;
+    ctx.accounts.transfer_stats.amount_today = 0;
+    ctx.accounts.transfer_stats.total_transferred = 0;
+    ctx.accounts.transfer_stats.transfer_count = 0;
+    ctx.accounts.transfer_stats.bump = ctx.bumps.transfer_stats;
+    Ok(())
+}

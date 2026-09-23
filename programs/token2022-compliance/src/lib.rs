@@ -40,4 +40,11 @@ pub mod token2022_compliance {
     ) -> Result<()> {
         instructions::set_authorization_status::set_authorization_status_handler(ctx, new_status)
     }
+
+    pub fn initialize_transfer_stats(
+        ctx: Context<InitializeTransferStats>,
+        wallet: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_transfer_stats::initialize_transfer_stats_handler(ctx, wallet)
+    }
 }
