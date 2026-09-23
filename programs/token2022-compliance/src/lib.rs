@@ -3,6 +3,7 @@ pub mod instructions;
 pub mod state;
 
 use instructions::*;
+use state::AuthorizationStatus;
 
 use anchor_lang::prelude::*;
 
@@ -31,5 +32,12 @@ pub mod token2022_compliance {
         wallet: Pubkey,
     ) -> Result<()> {
         instructions::initialize_authorization::initialize_authorization_handler(ctx, wallet)
+    }
+
+    pub fn set_authorization_status(
+        ctx: Context<SetAuthorizationStatus>,
+        new_status: AuthorizationStatus,
+    ) -> Result<()> {
+        instructions::set_authorization_status::set_authorization_status_handler(ctx, new_status)
     }
 }

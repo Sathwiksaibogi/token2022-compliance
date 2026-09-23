@@ -31,4 +31,10 @@ pub struct SetAuthorizationStatus<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-
+pub fn set_authorization_status_handler(
+    ctx: Context<SetAuthorizationStatus>,
+    new_status: AuthorizationStatus,
+) -> Result<()> {
+    ctx.accounts.authorization.status = new_status;
+    Ok(())
+}
