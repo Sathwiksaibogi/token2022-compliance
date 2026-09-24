@@ -130,6 +130,6 @@ pub fn initialize_extra_account_meta_list_handler(
     let mut data = account_info.try_borrow_mut_data()?;
 
     ExtraAccountMetaList::init::<ExecuteInstruction>(&mut data, &extra_account_metas)?;
-    
+
     Ok(())
 }
