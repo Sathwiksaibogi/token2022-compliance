@@ -47,4 +47,12 @@ pub mod token2022_compliance {
     ) -> Result<()> {
         instructions::initialize_transfer_stats::initialize_transfer_stats_handler(ctx, wallet)
     }
+
+    pub fn initialize_extra_account_meta_list(
+        ctx: Context<InitializeExtraAccountMetaList>,
+    ) -> Result<()> {
+        instructions::initialize_extra_account_meta_list::initialize_extra_account_meta_list_handler(
+            ctx,
+        )
+    }
 }
