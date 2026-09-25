@@ -10,4 +10,34 @@ pub enum ComplianceError {
 
     #[msg("Expiration must be zero or a future Unix timestamp")]
     InvalidExpiration,
+
+    #[msg("Invalid Transfer Hook invocation")]
+    InvalidTransferHookInvocation,
+
+    #[msg("Global Policy is not enabled")]
+    PolicyDisabled,
+
+    #[msg("Global Policy has Expired")]
+    PolicyExpired,
+
+    #[msg("Sender is not Authorized")]
+    SenderNotAuthorized,
+
+    #[msg("Sender is Blocked")]
+    SenderBlocked,
+
+    #[msg("Receiver is not Authorized")]
+    ReceiverNotAuthorized,
+
+    #[msg("Receiver is blocked")]
+    ReceiverBlocked,
+
+    #[msg("Maximum transfer amount has exceeded")]
+    MaxTransferAmountExceeded,
+
+    #[msg("Daily transfer limit exceeded")]
+    DailyLimitExceeded,
+
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
 }
