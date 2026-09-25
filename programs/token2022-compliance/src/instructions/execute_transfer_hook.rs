@@ -4,7 +4,12 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount},
 };
 
-use crate::state::{Authorization, GlobalPolicy, TransferStats};
+use crate::error::ComplianceError;
+use crate::state::{Authorization, AuthorizationStatus, GlobalPolicy, TransferStats};
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{transfer_hook::TransferHookAccount, BaseStateWithExtensions, StateWithExtensions},
+    state::Account as Token2022Account,
+};
 
 #[derive(Accounts)]
 pub struct ExecuteTransferHook<'info> {
@@ -87,4 +92,98 @@ pub struct ExecuteTransferHook<'info> {
         constraint = sender_stats.wallet == source_token.owner,
     )]
     pub sender_stats: Account<'info, TransferStats>,
+}
+
+fn verify_is_transferring(token_account_info: &AccountInfo) -> Result<()> {
+    let data = token_account_info.try_borrow_data()?;
+    let token_account = StateWithExtensions::<Token2022Account>::unpack(&data)?;
+    let transfer_hook_account = token_account.get_extension::<TransferHookAccount>()?;
+    require!(
+        bool::from(transfer_hook_account.transferring),
+        ComplianceError::InvalidTransferHookInvocation
+    );
+    Ok(())
+}
+pub fn execute_transfer_hook_handler(ctx: Context<ExecuteTransferHook>, amount: u64) -> Result<()> {
+    verify_is_transferring(&ctx.accounts.source_token.to_account_info())?;
+    verify_is_transferring(&ctx.accounts.destination_token.to_account_info())?;
+
+    require!(
+        ctx.accounts.global_policy.enabled == true,
+        ComplianceError::PolicyDisabled
+    );
+
+    let clock = Clock::get()?;
+    require!(
+        ctx.accounts.global_policy.expires_at == 0
+            || ctx.accounts.global_policy.expires_at > clock.unix_timestamp,
+        ComplianceError::PolicyExpired
+    );
+
+    match ctx.accounts.sender_authorization.status {
+        AuthorizationStatus::Authorized => {}
+
+        AuthorizationStatus::Unauthorized => {
+            return err!(ComplianceError::SenderNotAuthorized);
+        }
+
+        AuthorizationStatus::Blocked => {
+            return err!(ComplianceError::SenderBlocked);
+        }
+    }
+
+    match ctx.accounts.receiver_authorization.status {
+        AuthorizationStatus::Authorized => {}
+
+        AuthorizationStatus::Unauthorized => {
+            return err!(ComplianceError::ReceiverNotAuthorized);
+        }
+
+        AuthorizationStatus::Blocked => {
+            return err!(ComplianceError::ReceiverBlocked);
+        }
+    }
+
+    require!(
+        amount <= ctx.accounts.global_policy.max_transfer_amount,
+        ComplianceError::MaxTransferAmountExceeded
+    );
+
+    let current_day_index = clock.unix_timestamp.div_euclid(86_400);
+
+    let amount_today = if ctx.accounts.sender_stats.day_index == current_day_index {
+        ctx.accounts.sender_stats.amount_today
+    } else {
+        0
+    };
+
+    let new_amount_today = amount_today
+        .checked_add(amount)
+        .ok_or(ComplianceError::ArithmeticOverflow)?;
+
+    require!(
+        new_amount_today <= ctx.accounts.global_policy.daily_transfer_limit,
+        ComplianceError::DailyLimitExceeded
+    );
+
+    let new_total_transferred = ctx
+        .accounts
+        .sender_stats
+        .total_transferred
+        .checked_add(amount)
+        .ok_or(ComplianceError::ArithmeticOverflow)?;
+
+    let new_transfer_count = ctx
+        .accounts
+        .sender_stats
+        .transfer_count
+        .checked_add(1)
+        .ok_or(ComplianceError::ArithmeticOverflow)?;
+
+    ctx.accounts.sender_stats.day_index = current_day_index;
+    ctx.accounts.sender_stats.amount_today = new_amount_today;
+    ctx.accounts.sender_stats.total_transferred = new_total_transferred;
+    ctx.accounts.sender_stats.transfer_count = new_transfer_count;
+
+    Ok(())
 }

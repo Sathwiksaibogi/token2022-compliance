@@ -4276,6 +4276,7 @@ dependencies = [
  "solana-message",
  "solana-signer",
  "solana-transaction",
+ "spl-discriminator",
  "spl-tlv-account-resolution",
  "spl-transfer-hook-interface",
 ]

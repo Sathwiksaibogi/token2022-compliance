@@ -3,6 +3,7 @@ pub mod instructions;
 pub mod state;
 
 use instructions::*;
+use spl_discriminator::SplDiscriminate;
 use state::AuthorizationStatus;
 
 use anchor_lang::prelude::*;
@@ -54,5 +55,12 @@ pub mod token2022_compliance {
         instructions::initialize_extra_account_meta_list::initialize_extra_account_meta_list_handler(
             ctx,
         )
+    }
+
+    #[instruction(
+        discriminator = spl_transfer_hook_interface::instruction::ExecuteInstruction::SPL_DISCRIMINATOR_SLICE
+    )]
+    pub fn execute(ctx: Context<ExecuteTransferHook>, amount: u64) -> Result<()> {
+        instructions::execute_transfer_hook::execute_transfer_hook_handler(ctx, amount)
     }
 }
