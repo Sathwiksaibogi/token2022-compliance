@@ -71,14 +71,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11af131e96e1a0df153db2d673a28293d171da78056104ec8e0d396e2bdf305b"
 dependencies = [
  "solana-hash",
- "solana-message 4.4.1",
+ "solana-message",
  "solana-packet",
  "solana-pubkey 4.2.1",
  "solana-sdk-ids",
  "solana-short-vec",
  "solana-signature",
  "solana-svm-transaction",
- "solana-transaction 4.1.6",
+ "solana-transaction",
 ]
 
 [[package]]
@@ -1720,7 +1720,7 @@ dependencies = [
  "solana-last-restart-slot",
  "solana-loader-v3-interface 8.0.1",
  "solana-loader-v4-interface",
- "solana-message 4.4.1",
+ "solana-message",
  "solana-native-token",
  "solana-nonce",
  "solana-nonce-account",
@@ -1746,7 +1746,7 @@ dependencies = [
  "solana-system-program",
  "solana-sysvar 4.1.0",
  "solana-sysvar-id",
- "solana-transaction 4.1.6",
+ "solana-transaction",
  "solana-transaction-context",
  "solana-transaction-error",
  "thiserror 2.0.20",
@@ -3071,21 +3071,6 @@ dependencies = [
 
 [[package]]
 name = "solana-message"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0448b1fd891c5f46491e5dc7d9986385ba3c852c340db2911dd29faa01d2b08d"
-dependencies = [
- "lazy_static",
- "solana-address 2.6.1",
- "solana-hash",
- "solana-instruction",
- "solana-sanitize",
- "solana-sdk-ids",
- "solana-transaction-error",
-]
-
-[[package]]
-name = "solana-message"
 version = "4.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e29e655f222a3a64145fedceacdca3e696ba7aded1dbd5391aa09d5fbfba53c"
@@ -3335,13 +3320,13 @@ dependencies = [
  "solana-compute-budget",
  "solana-compute-budget-instruction",
  "solana-hash",
- "solana-message 4.4.1",
+ "solana-message",
  "solana-program-entrypoint",
  "solana-pubkey 4.2.1",
  "solana-sdk-ids",
  "solana-signature",
  "solana-svm-transaction",
- "solana-transaction 4.1.6",
+ "solana-transaction",
  "solana-transaction-context",
  "solana-transaction-error",
  "wincode",
@@ -3642,11 +3627,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "736d2cec944c6f8f298a7bd8ada5eb318cca9ab859281b1300842fa0e9a25afa"
 dependencies = [
  "solana-hash",
- "solana-message 4.4.1",
+ "solana-message",
  "solana-pubkey 4.2.1",
  "solana-sdk-ids",
  "solana-signature",
- "solana-transaction 4.1.6",
+ "solana-transaction",
 ]
 
 [[package]]
@@ -3834,23 +3819,6 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96697cff5075a028265324255efed226099f6d761ca67342b230d09f72cc48d2"
-dependencies = [
- "solana-address 2.6.1",
- "solana-hash",
- "solana-instruction",
- "solana-instruction-error",
- "solana-message 3.1.0",
- "solana-sanitize",
- "solana-sdk-ids",
- "solana-signature",
- "solana-transaction-error",
-]
-
-[[package]]
-name = "solana-transaction"
 version = "4.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8008008a75246adaf8b67411093a6d78db8232c74b00eff6041fd1da73679e7"
@@ -3859,7 +3827,7 @@ dependencies = [
  "solana-hash",
  "solana-instruction",
  "solana-instruction-error",
- "solana-message 4.4.1",
+ "solana-message",
  "solana-sanitize",
  "solana-sdk-ids",
  "solana-short-vec",
@@ -4466,10 +4434,12 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "litesvm",
+ "solana-clock",
  "solana-keypair",
- "solana-message 3.1.0",
+ "solana-message",
  "solana-signer",
- "solana-transaction 3.1.0",
+ "solana-system-interface 3.2.0",
+ "solana-transaction",
  "spl-discriminator",
  "spl-tlv-account-resolution",
  "spl-transfer-hook-interface",
