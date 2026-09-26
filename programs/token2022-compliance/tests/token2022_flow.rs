@@ -22,6 +22,9 @@ use solana_system_interface::instruction::create_account;
 
 use solana_transaction::Transaction;
 
+use anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::{
+    instruction as transfer_fee_instruction, TransferFeeAmount, TransferFeeConfig,
+};
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
         transfer_hook::{
@@ -65,14 +68,21 @@ fn token2022_compliance_flow() {
 
     let mint_authority_pubkey = mint_authority.pubkey();
 
+    let transfer_fee_basis_points: u16 = 100; // 1%
+    let maximum_transfer_fee: u64 = 5_000_000; // 5 tokens (6 decimals)
+
     svm.airdrop(&payer.pubkey(), 10_000_000_000)
         .expect("failed to fund payer");
 
-    let mint_size =
-        ExtensionType::try_calculate_account_len::<Token2022Mint>(&[ExtensionType::TransferHook])
-            .expect("failed to calculate Token-2022 mint size");
+    let mint_extensions = [
+        ExtensionType::TransferHook,
+        ExtensionType::TransferFeeConfig,
+    ];
 
-    println!("Transfer-Hook mint size: {mint_size} bytes");
+    let mint_size = ExtensionType::try_calculate_account_len::<Token2022Mint>(&mint_extensions)
+        .expect("failed to calculate Token-2022 mint size");
+
+    println!("Transfer-Hook + Transfer-Fee mint size: {mint_size} bytes");
 
     assert!(mint_size > 82);
 
@@ -96,6 +106,16 @@ fn token2022_compliance_flow() {
     )
     .expect("failed to build Transfer Hook initialization instruction");
 
+    let initialize_transfer_fee_ix = transfer_fee_instruction::initialize_transfer_fee_config(
+        &anchor_spl::token_2022::ID,
+        &mint_pubkey,
+        Some(&mint_authority_pubkey),
+        Some(&mint_authority_pubkey),
+        transfer_fee_basis_points,
+        maximum_transfer_fee,
+    )
+    .expect("failed to build TransferFeeConfig initialization");
+
     let initialize_mint_ix = initialize_mint2(
         &anchor_spl::token_2022::ID,
         &mint_pubkey,
@@ -111,6 +131,7 @@ fn token2022_compliance_flow() {
         &[
             create_mint_account_ix,
             initialize_transfer_hook_ix,
+            initialize_transfer_fee_ix,
             initialize_mint_ix,
         ],
         Some(&payer.pubkey()),
@@ -173,6 +194,49 @@ fn token2022_compliance_flow() {
 
     println!("Transfer Hook program: {:?}", hook_program_id);
 
+    let transfer_fee_config = parsed_mint
+        .get_extension::<TransferFeeConfig>()
+        .expect("TransferFeeConfig extension missing");
+
+    let fee_config_authority: Option<Pubkey> =
+        transfer_fee_config.transfer_fee_config_authority.into();
+    let withdraw_withheld_authority: Option<Pubkey> =
+        transfer_fee_config.withdraw_withheld_authority.into();
+
+    assert_eq!(fee_config_authority, Some(mint_authority_pubkey));
+    assert_eq!(withdraw_withheld_authority, Some(mint_authority_pubkey));
+    assert_eq!(u64::from(transfer_fee_config.withheld_amount), 0);
+
+    assert_eq!(
+        u16::from(
+            transfer_fee_config
+                .older_transfer_fee
+                .transfer_fee_basis_points
+        ),
+        transfer_fee_basis_points
+    );
+    assert_eq!(
+        u64::from(transfer_fee_config.older_transfer_fee.maximum_fee),
+        maximum_transfer_fee
+    );
+    assert_eq!(
+        u16::from(
+            transfer_fee_config
+                .newer_transfer_fee
+                .transfer_fee_basis_points
+        ),
+        transfer_fee_basis_points
+    );
+    assert_eq!(
+        u64::from(transfer_fee_config.newer_transfer_fee.maximum_fee),
+        maximum_transfer_fee
+    );
+
+    println!(
+        "Transfer fee: {} bps, max {} base units",
+        transfer_fee_basis_points, maximum_transfer_fee
+    );
+
     let mint_extension_types = parsed_mint
         .get_extension_types()
         .expect("failed to read mint extension types");
@@ -187,11 +251,20 @@ fn token2022_compliance_flow() {
         required_account_extensions
     );
 
+    assert!(
+        required_account_extensions.contains(&ExtensionType::TransferHookAccount),
+        "TransferHookAccount must be required"
+    );
+    assert!(
+        required_account_extensions.contains(&ExtensionType::TransferFeeAmount),
+        "TransferFeeAmount must be required"
+    );
+
     let token_account_size =
         ExtensionType::try_calculate_account_len::<Token2022Account>(&required_account_extensions)
             .expect("failed to calculate Token-2022 account size");
 
-    println!("Transfer-Hook token account size: {token_account_size} bytes");
+    println!("Transfer-Hook + Transfer-Fee token account size: {token_account_size} bytes");
 
     let alice = Keypair::new();
 
@@ -299,6 +372,17 @@ fn token2022_compliance_flow() {
         .expect("Bob TransferHookAccount extension missing");
 
     assert!(!bool::from(bob_transfer_hook.transferring));
+
+    let alice_transfer_fee = parsed_alice
+        .get_extension::<TransferFeeAmount>()
+        .expect("Alice TransferFeeAmount extension missing");
+
+    let bob_transfer_fee = parsed_bob
+        .get_extension::<TransferFeeAmount>()
+        .expect("Bob TransferFeeAmount extension missing");
+
+    assert_eq!(u64::from(alice_transfer_fee.withheld_amount), 0);
+    assert_eq!(u64::from(bob_transfer_fee.withheld_amount), 0);
 
     println!("Alice token owner: {}", parsed_alice.base.owner);
 
@@ -915,7 +999,7 @@ fn token2022_compliance_flow() {
 
     assert_eq!(alice_after_transfer.base.amount, 960_000_000,);
 
-    assert_eq!(bob_after_transfer.base.amount, 40_000_000,);
+    assert_eq!(bob_after_transfer.base.amount, 39_600_000,);
 
     println!(
         "Alice balance after transfer: {}",
@@ -925,6 +1009,17 @@ fn token2022_compliance_flow() {
     println!(
         "Bob balance after transfer: {}",
         bob_after_transfer.base.amount
+    );
+
+    let bob_fee_after_transfer = bob_after_transfer
+        .get_extension::<TransferFeeAmount>()
+        .expect("Bob TransferFeeAmount missing after transfer");
+
+    assert_eq!(u64::from(bob_fee_after_transfer.withheld_amount), 400_000);
+
+    println!(
+        "Bob withheld transfer fee: {}",
+        u64::from(bob_fee_after_transfer.withheld_amount)
     );
 
     let alice_stats_after_account = svm
@@ -1044,7 +1139,7 @@ fn token2022_compliance_flow() {
         StateWithExtensions::<Token2022Account>::unpack(&bob_after_rejection_account.data)
             .expect("failed to parse Bob after rejected transfer");
 
-    assert_eq!(bob_after_rejection.base.amount, 40_000_000);
+    assert_eq!(bob_after_rejection.base.amount, 39_600_000);
 
     let stats_after_rejection_account = svm
         .get_account(&alice_stats_pda)
@@ -1213,7 +1308,7 @@ fn token2022_compliance_flow() {
 
     assert_eq!(alice_after_daily_rejection.base.amount, 770_000_000);
 
-    assert_eq!(bob_after_daily_rejection.base.amount, 230_000_000);
+    assert_eq!(bob_after_daily_rejection.base.amount, 227_700_000);
 
     let stats_after_daily_rejection_account = svm
         .get_account(&alice_stats_pda)
@@ -1345,7 +1440,7 @@ fn token2022_compliance_flow() {
 
     assert_eq!(alice_after_blocked_attempt.base.amount, 770_000_000);
 
-    assert_eq!(bob_after_blocked_attempt.base.amount, 230_000_000);
+    assert_eq!(bob_after_blocked_attempt.base.amount, 227_700_000);
 
     // Re-fetch Alice's TransferStats
 
@@ -1497,6 +1592,26 @@ fn token2022_compliance_flow() {
 
         assert_eq!(stats.transfer_count, expected_count);
 
+        let alice_fee = alice_state
+            .get_extension::<TransferFeeAmount>()
+            .expect("Alice TransferFeeAmount missing");
+
+        let bob_fee = bob_state
+            .get_extension::<TransferFeeAmount>()
+            .expect("Bob TransferFeeAmount missing");
+
+        assert_eq!(u64::from(alice_fee.withheld_amount), 0);
+
+        // All successful transfers in this flow originate from Alice's original
+        // 1_000-token allocation and terminate at Bob. Source balance falls by
+        // the gross transfer amount, while Bob receives the post-fee amount.
+        let expected_bob_withheld = 1_000_000_000u64
+            .checked_sub(expected_alice)
+            .and_then(|value| value.checked_sub(expected_bob))
+            .expect("invalid expected balance accounting");
+
+        assert_eq!(u64::from(bob_fee.withheld_amount), expected_bob_withheld);
+
         let alice_hook = alice_state
             .get_extension::<TransferHookAccount>()
             .expect("Alice TransferHookAccount missing");
@@ -1538,7 +1653,7 @@ fn token2022_compliance_flow() {
         "expected ReceiverNotAuthorized, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Unauthorized receiver test passed");
 
@@ -1576,7 +1691,7 @@ fn token2022_compliance_flow() {
         "expected SenderNotAuthorized, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Unauthorized sender test passed");
 
@@ -1608,7 +1723,7 @@ fn token2022_compliance_flow() {
         "expected SenderBlocked, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Blocked sender test passed");
 
@@ -1723,7 +1838,7 @@ fn token2022_compliance_flow() {
         "expected InvalidTransferHookInvocation, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Direct-hook attack rejected");
 
@@ -1755,7 +1870,7 @@ fn token2022_compliance_flow() {
         "transfer must not bypass Transfer Hook by omitting accounts"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Missing-hook-accounts bypass rejected");
 
@@ -1795,7 +1910,7 @@ fn token2022_compliance_flow() {
         "fake EAML must not be accepted"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Fake ExtraAccountMetaList rejected");
 
@@ -1835,7 +1950,7 @@ fn token2022_compliance_flow() {
         "authorization substitution must fail"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("Authorization substitution rejected");
 
@@ -1875,7 +1990,7 @@ fn token2022_compliance_flow() {
         "TransferStats substitution must fail"
     );
 
-    assert_flow_state(&svm, 770_000_000, 230_000_000, 230_000_000, 230_000_000, 3);
+    assert_flow_state(&svm, 770_000_000, 227_700_000, 230_000_000, 230_000_000, 3);
 
     println!("TransferStats substitution rejected");
 
@@ -1893,7 +2008,7 @@ fn token2022_compliance_flow() {
     svm.send_transaction(tx)
         .expect("transfer reaching exact daily limit should succeed");
 
-    assert_flow_state(&svm, 750_000_000, 250_000_000, 250_000_000, 250_000_000, 4);
+    assert_flow_state(&svm, 750_000_000, 247_500_000, 250_000_000, 250_000_000, 4);
 
     println!("Exact daily-limit boundary accepted");
 
@@ -1912,7 +2027,7 @@ fn token2022_compliance_flow() {
 
     assert!(format!("{err:?}").contains("DailyLimitExceeded"));
 
-    assert_flow_state(&svm, 750_000_000, 250_000_000, 250_000_000, 250_000_000, 4);
+    assert_flow_state(&svm, 750_000_000, 247_500_000, 250_000_000, 250_000_000, 4);
 
     println!("Daily-limit + 1 rejection passed");
 
@@ -2015,7 +2130,7 @@ fn token2022_compliance_flow() {
 
     assert_eq!(alice_2.base.amount, 10_000_000);
 
-    assert_flow_state(&svm, 750_000_000, 250_000_000, 250_000_000, 250_000_000, 4);
+    assert_flow_state(&svm, 750_000_000, 247_500_000, 250_000_000, 250_000_000, 4);
 
     println!("Multiple-token-account daily-limit bypass rejected");
 
@@ -2066,7 +2181,7 @@ fn token2022_compliance_flow() {
 
     println!("Lifetime transferred: {}", stats.total_transferred);
 
-    assert_flow_state(&svm, 749_000_000, 251_000_000, 1_000_000, 251_000_000, 5);
+    assert_flow_state(&svm, 749_000_000, 248_490_000, 1_000_000, 251_000_000, 5);
 
     // ---------------------------------------Test 17 — Delegate cannot change compliance identity
 
@@ -2134,7 +2249,7 @@ fn token2022_compliance_flow() {
     assert_flow_state(
         &svm,
         744_000_000,
-        256_000_000,
+        253_440_000,
         // Day 1: previous 1 + delegated 5
         6_000_000,
         // lifetime: 251 + 5
@@ -2242,7 +2357,7 @@ fn token2022_compliance_flow() {
     svm.send_transaction(transfer_40_after_update_tx)
         .expect("40-token transfer should succeed under new max");
 
-    assert_flow_state(&svm, 704_000_000, 296_000_000, 46_000_000, 296_000_000, 7);
+    assert_flow_state(&svm, 704_000_000, 293_040_000, 46_000_000, 296_000_000, 7);
 
     println!("Updated max-transfer rule accepted valid 40-token transfer");
 
@@ -2271,7 +2386,7 @@ fn token2022_compliance_flow() {
         "expected MaxTransferAmountExceeded, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 704_000_000, 296_000_000, 46_000_000, 296_000_000, 7);
+    assert_flow_state(&svm, 704_000_000, 293_040_000, 46_000_000, 296_000_000, 7);
 
     println!("Updated max-transfer rejection passed");
 
@@ -2490,7 +2605,7 @@ fn token2022_compliance_flow() {
         "expected PolicyDisabled, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 704_000_000, 296_000_000, 46_000_000, 296_000_000, 7);
+    assert_flow_state(&svm, 704_000_000, 293_040_000, 46_000_000, 296_000_000, 7);
 
     println!("Disabled-policy transfer rejected");
 
@@ -2581,7 +2696,7 @@ fn token2022_compliance_flow() {
     svm.send_transaction(exact_daily_tx)
         .expect("exact updated daily limit should succeed");
 
-    assert_flow_state(&svm, 700_000_000, 300_000_000, 50_000_000, 300_000_000, 8);
+    assert_flow_state(&svm, 700_000_000, 297_000_000, 50_000_000, 300_000_000, 8);
 
     println!("Updated daily-limit exact boundary passed");
 
@@ -2610,7 +2725,7 @@ fn token2022_compliance_flow() {
         "expected DailyLimitExceeded, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 700_000_000, 300_000_000, 50_000_000, 300_000_000, 8);
+    assert_flow_state(&svm, 700_000_000, 297_000_000, 50_000_000, 300_000_000, 8);
 
     println!("Updated daily-limit rejection passed");
 
@@ -2672,7 +2787,7 @@ fn token2022_compliance_flow() {
     svm.send_transaction(pre_expiry_transfer_tx)
         .expect("transfer before expiry should succeed");
 
-    assert_flow_state(&svm, 699_000_000, 301_000_000, 51_000_000, 301_000_000, 9);
+    assert_flow_state(&svm, 699_000_000, 297_990_000, 51_000_000, 301_000_000, 9);
 
     println!("Pre-expiry transfer passed");
 
@@ -2717,7 +2832,7 @@ fn token2022_compliance_flow() {
         "expected PolicyExpired, got: {err_text}"
     );
 
-    assert_flow_state(&svm, 699_000_000, 301_000_000, 51_000_000, 301_000_000, 9);
+    assert_flow_state(&svm, 699_000_000, 297_990_000, 51_000_000, 301_000_000, 9);
 
     println!("Expired-policy transfer rejected");
 
@@ -2773,7 +2888,7 @@ fn token2022_compliance_flow() {
     svm.send_transaction(after_clear_expiry_tx)
         .expect("transfer should work after clearing expiry");
 
-    assert_flow_state(&svm, 698_000_000, 302_000_000, 52_000_000, 302_000_000, 10);
+    assert_flow_state(&svm, 698_000_000, 298_980_000, 52_000_000, 302_000_000, 10);
 
     println!("Transfer after clearing expiry passed");
 
@@ -2801,6 +2916,26 @@ fn token2022_compliance_flow() {
     println!("Final enabled state: {}", final_policy.enabled);
     println!("Final expiration: {}", final_policy.expires_at);
     println!("========================================");
+
+    let bob_final_account = svm
+        .get_account(&bob_token_pubkey)
+        .expect("Bob token account missing at final fee check");
+
+    let bob_final_state = StateWithExtensions::<Token2022Account>::unpack(&bob_final_account.data)
+        .expect("failed to parse Bob at final fee check");
+
+    let bob_final_fee = bob_final_state
+        .get_extension::<TransferFeeAmount>()
+        .expect("Bob TransferFeeAmount missing at final fee check");
+
+    assert_eq!(bob_final_state.base.amount, 298_980_000);
+    assert_eq!(u64::from(bob_final_fee.withheld_amount), 3_020_000);
+
+    println!(
+        "Final Bob spendable balance: {}, withheld fees: {}",
+        bob_final_state.base.amount,
+        u64::from(bob_final_fee.withheld_amount)
+    );
 
     // ========================================================================
     // SECURITY TEST — WRONG TRANSFER-HOOK PROGRAM
@@ -2848,6 +2983,17 @@ fn token2022_compliance_flow() {
     )
     .expect("failed to build wrong-hook TransferHook initialization");
 
+    let initialize_wrong_transfer_fee_ix =
+        transfer_fee_instruction::initialize_transfer_fee_config(
+            &anchor_spl::token_2022::ID,
+            &wrong_hook_mint_pubkey,
+            Some(&mint_authority_pubkey),
+            Some(&mint_authority_pubkey),
+            transfer_fee_basis_points,
+            maximum_transfer_fee,
+        )
+        .expect("failed to build wrong-hook TransferFeeConfig initialization");
+
     let initialize_wrong_mint_ix = initialize_mint2(
         &anchor_spl::token_2022::ID,
         &wrong_hook_mint_pubkey,
@@ -2861,6 +3007,7 @@ fn token2022_compliance_flow() {
         &[
             create_wrong_hook_mint_ix,
             initialize_wrong_transfer_hook_ix,
+            initialize_wrong_transfer_fee_ix,
             initialize_wrong_mint_ix,
         ],
         Some(&payer.pubkey()),
