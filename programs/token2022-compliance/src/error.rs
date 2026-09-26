@@ -40,4 +40,7 @@ pub enum ComplianceError {
 
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
+
+    #[msg("Mint is not configured to use this compliance transfer hook")]
+    InvalidTransferHookProgram,
 }
