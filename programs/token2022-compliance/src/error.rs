@@ -43,4 +43,7 @@ pub enum ComplianceError {
 
     #[msg("Mint is not configured to use this compliance transfer hook")]
     InvalidTransferHookProgram,
+
+    #[msg("Transfer fee basis points cannot exceed 10,000")]
+    InvalidTransferFeeBasisPoints,
 }

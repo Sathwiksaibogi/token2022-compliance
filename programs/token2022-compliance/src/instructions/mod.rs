@@ -5,6 +5,7 @@ pub mod initialize_policy;
 pub mod initialize_transfer_stats;
 pub mod set_authorization_status;
 pub mod update_policy;
+pub mod update_transfer_fee;
 
 pub use execute_transfer_hook::*;
 pub use initialize_authorization::*;
@@ -13,3 +14,4 @@ pub use initialize_policy::*;
 pub use initialize_transfer_stats::*;
 pub use set_authorization_status::*;
 pub use update_policy::*;
+pub use update_transfer_fee::*;

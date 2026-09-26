@@ -68,6 +68,13 @@ fn token2022_compliance_flow() {
 
     let mint_authority_pubkey = mint_authority.pubkey();
 
+    // Derive the canonical GlobalPolicy PDA before the mint exists.
+    // Token-2022 stores this address as the TransferFeeConfig authority.
+    let (global_policy_pda, global_policy_bump) = Pubkey::find_program_address(
+        &[b"policy", mint_pubkey.as_ref()],
+        &token2022_compliance::ID,
+    );
+
     let transfer_fee_basis_points: u16 = 100; // 1%
     let maximum_transfer_fee: u64 = 5_000_000; // 5 tokens (6 decimals)
 
@@ -109,7 +116,9 @@ fn token2022_compliance_flow() {
     let initialize_transfer_fee_ix = transfer_fee_instruction::initialize_transfer_fee_config(
         &anchor_spl::token_2022::ID,
         &mint_pubkey,
-        Some(&mint_authority_pubkey),
+        // Fee configuration changes must go through our program-controlled PDA.
+        Some(&global_policy_pda),
+        // Withheld-fee withdrawal remains a separate authority.
         Some(&mint_authority_pubkey),
         transfer_fee_basis_points,
         maximum_transfer_fee,
@@ -203,7 +212,7 @@ fn token2022_compliance_flow() {
     let withdraw_withheld_authority: Option<Pubkey> =
         transfer_fee_config.withdraw_withheld_authority.into();
 
-    assert_eq!(fee_config_authority, Some(mint_authority_pubkey));
+    assert_eq!(fee_config_authority, Some(global_policy_pda));
     assert_eq!(withdraw_withheld_authority, Some(mint_authority_pubkey));
     assert_eq!(u64::from(transfer_fee_config.withheld_amount), 0);
 
@@ -473,11 +482,6 @@ fn token2022_compliance_flow() {
 
     svm.airdrop(&admin_pubkey, 2_000_000_000)
         .expect("failed to fund policy admin");
-
-    let (global_policy_pda, global_policy_bump) = Pubkey::find_program_address(
-        &[b"policy", mint_pubkey.as_ref()],
-        &token2022_compliance::ID,
-    );
 
     println!("GlobalPolicy PDA: {}", global_policy_pda);
 
@@ -2936,6 +2940,321 @@ fn token2022_compliance_flow() {
         bob_final_state.base.amount,
         u64::from(bob_final_fee.withheld_amount)
     );
+
+    // ========================================================================
+    // DYNAMIC TRANSFER FEE ENGINE TESTS
+    //
+    // TransferFeeConfig authority = GlobalPolicy PDA.
+    // Admin authorizes the change through our program, and the program uses
+    // invoke_signed so the GlobalPolicy PDA can sign the Token-2022 CPI.
+    // ========================================================================
+
+    println!("========================================");
+    println!("Starting Dynamic Transfer Fee Engine tests");
+    println!("========================================");
+
+    // ------------------------------------------------------------------------
+    // Helper: read TransferFeeConfig from the mint
+    // ------------------------------------------------------------------------
+    let read_transfer_fee_config = |svm: &LiteSVM| {
+        let mint_account = svm
+            .get_account(&mint_pubkey)
+            .expect("mint missing while reading TransferFeeConfig");
+
+        let parsed_mint = StateWithExtensions::<Token2022Mint>::unpack(&mint_account.data)
+            .expect("failed to parse mint while reading TransferFeeConfig");
+
+        *parsed_mint
+            .get_extension::<TransferFeeConfig>()
+            .expect("TransferFeeConfig missing")
+    };
+
+    // ------------------------------------------------------------------------
+    // TEST 28A — Mint authority cannot bypass our program and update fees
+    // directly, because it is no longer the TransferFeeConfig authority.
+    // ------------------------------------------------------------------------
+    let direct_fee_update_ix = transfer_fee_instruction::set_transfer_fee(
+        &anchor_spl::token_2022::ID,
+        &mint_pubkey,
+        &mint_authority_pubkey,
+        &[],
+        300,
+        maximum_transfer_fee,
+    )
+    .expect("failed to build direct Token-2022 SetTransferFee");
+
+    let direct_fee_update_tx = Transaction::new_signed_with_payer(
+        &[direct_fee_update_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &mint_authority],
+        fresh_blockhash(&mut svm),
+    );
+
+    let direct_fee_update_result = svm.send_transaction(direct_fee_update_tx);
+
+    assert!(
+        direct_fee_update_result.is_err(),
+        "mint authority must not bypass the GlobalPolicy PDA fee authority"
+    );
+
+    let fee_config_after_bypass = read_transfer_fee_config(&svm);
+
+    let configured_fee_authority: Option<Pubkey> =
+        fee_config_after_bypass.transfer_fee_config_authority.into();
+
+    assert_eq!(configured_fee_authority, Some(global_policy_pda));
+
+    let current_epoch_before_update = svm.get_sysvar::<Clock>().epoch;
+
+    let active_fee_before_update =
+        fee_config_after_bypass.get_epoch_fee(current_epoch_before_update);
+
+    assert_eq!(
+        u16::from(active_fee_before_update.transfer_fee_basis_points),
+        transfer_fee_basis_points
+    );
+
+    assert_eq!(read_policy(&svm).policy_version, 7);
+
+    println!("Direct Token-2022 fee-authority bypass rejected");
+
+    // ------------------------------------------------------------------------
+    // TEST 28B — Non-admin cannot call our dynamic fee instruction.
+    // ------------------------------------------------------------------------
+    let fee_attacker = Keypair::new();
+    let fee_attacker_pubkey = fee_attacker.pubkey();
+
+    let unauthorized_fee_update_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::UpdateTransferFee {
+            admin: fee_attacker_pubkey,
+            mint: mint_pubkey,
+            global_policy: global_policy_pda,
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::UpdateTransferFee {
+            transfer_fee_basis_points: 200,
+            maximum_fee: maximum_transfer_fee,
+        }
+        .data(),
+    };
+
+    let unauthorized_fee_update_tx = Transaction::new_signed_with_payer(
+        &[unauthorized_fee_update_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &fee_attacker],
+        fresh_blockhash(&mut svm),
+    );
+
+    let unauthorized_fee_update_result = svm.send_transaction(unauthorized_fee_update_tx);
+
+    assert!(
+        unauthorized_fee_update_result.is_err(),
+        "non-admin must not be able to update transfer fees"
+    );
+
+    assert_eq!(read_policy(&svm).policy_version, 7);
+
+    println!("Unauthorized dynamic-fee admin rejected");
+
+    // ------------------------------------------------------------------------
+    // TEST 28C — Basis points above 10,000 must be rejected by our program.
+    // ------------------------------------------------------------------------
+    let invalid_fee_update_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::UpdateTransferFee {
+            admin: admin_pubkey,
+            mint: mint_pubkey,
+            global_policy: global_policy_pda,
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::UpdateTransferFee {
+            transfer_fee_basis_points: 10_001,
+            maximum_fee: maximum_transfer_fee,
+        }
+        .data(),
+    };
+
+    let invalid_fee_update_tx = Transaction::new_signed_with_payer(
+        &[invalid_fee_update_ix],
+        Some(&admin_pubkey),
+        &[&admin],
+        fresh_blockhash(&mut svm),
+    );
+
+    let err = svm
+        .send_transaction(invalid_fee_update_tx)
+        .expect_err("fee basis points above 10,000 must fail");
+
+    let err_text = format!("{err:?}");
+
+    assert!(
+        err_text.contains("InvalidTransferFeeBasisPoints"),
+        "expected InvalidTransferFeeBasisPoints, got: {err_text}"
+    );
+
+    assert_eq!(read_policy(&svm).policy_version, 7);
+
+    println!("Invalid transfer-fee basis points rejected");
+
+    // ------------------------------------------------------------------------
+    // TEST 28D — Admin updates the fee from 1% -> 2%.
+    //
+    // Token-2022 intentionally schedules the new fee two epochs ahead.
+    // Our policy version increments immediately because the protocol
+    // configuration was successfully changed.
+    // ------------------------------------------------------------------------
+    let fee_update_epoch = svm.get_sysvar::<Clock>().epoch;
+
+    let update_transfer_fee_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::UpdateTransferFee {
+            admin: admin_pubkey,
+            mint: mint_pubkey,
+            global_policy: global_policy_pda,
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::UpdateTransferFee {
+            transfer_fee_basis_points: 200, // 2%
+            maximum_fee: maximum_transfer_fee,
+        }
+        .data(),
+    };
+
+    let update_transfer_fee_tx = Transaction::new_signed_with_payer(
+        &[update_transfer_fee_ix],
+        Some(&admin_pubkey),
+        &[&admin],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(update_transfer_fee_tx)
+        .expect("admin dynamic transfer-fee update failed");
+
+    let fee_policy_after_update = read_policy(&svm);
+
+    assert_eq!(fee_policy_after_update.policy_version, 8);
+
+    let fee_config_after_update = read_transfer_fee_config(&svm);
+
+    let fee_authority_after_update: Option<Pubkey> =
+        fee_config_after_update.transfer_fee_config_authority.into();
+
+    assert_eq!(fee_authority_after_update, Some(global_policy_pda));
+
+    assert_eq!(
+        u16::from(
+            fee_config_after_update
+                .newer_transfer_fee
+                .transfer_fee_basis_points
+        ),
+        200
+    );
+
+    assert_eq!(
+        u64::from(fee_config_after_update.newer_transfer_fee.maximum_fee),
+        maximum_transfer_fee
+    );
+
+    let fee_activation_epoch = u64::from(fee_config_after_update.newer_transfer_fee.epoch);
+
+    assert_eq!(
+        fee_activation_epoch,
+        fee_update_epoch.saturating_add(2),
+        "Token-2022 should schedule the new fee two epochs ahead"
+    );
+
+    // Before activation, the old 1% fee remains active.
+    let active_fee_before_activation = fee_config_after_update.get_epoch_fee(fee_update_epoch);
+
+    assert_eq!(
+        u16::from(active_fee_before_activation.transfer_fee_basis_points),
+        100
+    );
+
+    println!(
+        "Dynamic fee update scheduled: 200 bps activates at epoch {}",
+        fee_activation_epoch
+    );
+
+    // ------------------------------------------------------------------------
+    // TEST 28E — Advance Clock to the activation epoch and prove a real
+    // compliant transfer uses the new 2% fee.
+    // ------------------------------------------------------------------------
+
+    // Refresh the blockhash first, then set the Clock epoch used by Token-2022.
+    let activation_blockhash = fresh_blockhash(&mut svm);
+
+    let mut activation_clock = svm.get_sysvar::<Clock>();
+    activation_clock.epoch = fee_activation_epoch;
+    svm.set_sysvar::<Clock>(&activation_clock);
+
+    let active_fee_config = read_transfer_fee_config(&svm);
+
+    let active_fee = active_fee_config.get_epoch_fee(fee_activation_epoch);
+
+    assert_eq!(u16::from(active_fee.transfer_fee_basis_points), 200);
+
+    let transfer_with_updated_fee_ix = build_hooked_transfer(10_000_000);
+
+    let transfer_with_updated_fee_tx = Transaction::new_signed_with_payer(
+        &[transfer_with_updated_fee_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &alice],
+        activation_blockhash,
+    );
+
+    svm.send_transaction(transfer_with_updated_fee_tx)
+        .expect("transfer with dynamically updated fee should succeed");
+
+    // Before this transfer:
+    // Alice = 698.000000
+    // Bob spendable = 298.980000
+    // Bob withheld = 3.020000
+    //
+    // 10-token transfer at 2%:
+    // Alice loses 10.000000
+    // Bob receives 9.800000
+    // Bob withholds 0.200000
+    assert_flow_state(&svm, 688_000_000, 308_780_000, 62_000_000, 312_000_000, 11);
+
+    let bob_after_dynamic_fee_account = svm
+        .get_account(&bob_token_pubkey)
+        .expect("Bob token account missing after dynamic-fee transfer");
+
+    let bob_after_dynamic_fee =
+        StateWithExtensions::<Token2022Account>::unpack(&bob_after_dynamic_fee_account.data)
+            .expect("failed to parse Bob after dynamic-fee transfer");
+
+    let bob_fee_after_dynamic_update = bob_after_dynamic_fee
+        .get_extension::<TransferFeeAmount>()
+        .expect("Bob TransferFeeAmount missing after dynamic-fee transfer");
+
+    assert_eq!(bob_after_dynamic_fee.base.amount, 308_780_000);
+    assert_eq!(
+        u64::from(bob_fee_after_dynamic_update.withheld_amount),
+        3_220_000
+    );
+
+    assert_eq!(read_policy(&svm).policy_version, 8);
+
+    println!("Dynamic 2% transfer fee activated and verified");
+    println!(
+        "Bob spendable: {}, withheld fees: {}",
+        bob_after_dynamic_fee.base.amount,
+        u64::from(bob_fee_after_dynamic_update.withheld_amount)
+    );
+    println!("Final protocol policy version: 8");
+    println!("========================================");
 
     // ========================================================================
     // SECURITY TEST — WRONG TRANSFER-HOOK PROGRAM

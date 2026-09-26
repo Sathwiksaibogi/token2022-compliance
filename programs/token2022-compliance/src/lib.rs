@@ -67,4 +67,16 @@ pub mod token2022_compliance {
     pub fn update_policy(ctx: Context<UpdatePolicy>, args: UpdatePolicyArgs) -> Result<()> {
         instructions::update_policy::update_policy_handler(ctx, args)
     }
+
+    pub fn update_transfer_fee(
+        ctx: Context<UpdateTransferFee>,
+        transfer_fee_basis_points: u16,
+        maximum_fee: u64,
+    ) -> Result<()> {
+        instructions::update_transfer_fee::update_transfer_fee_handler(
+            ctx,
+            transfer_fee_basis_points,
+            maximum_fee,
+        )
+    }
 }
