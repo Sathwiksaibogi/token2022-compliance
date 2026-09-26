@@ -63,4 +63,8 @@ pub mod token2022_compliance {
     pub fn execute(ctx: Context<ExecuteTransferHook>, amount: u64) -> Result<()> {
         instructions::execute_transfer_hook::execute_transfer_hook_handler(ctx, amount)
     }
+
+    pub fn update_policy(ctx: Context<UpdatePolicy>, args: UpdatePolicyArgs) -> Result<()> {
+        instructions::update_policy::update_policy_handler(ctx, args)
+    }
 }
