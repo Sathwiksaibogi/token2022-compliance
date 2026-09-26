@@ -2801,4 +2801,439 @@ fn token2022_compliance_flow() {
     println!("Final enabled state: {}", final_policy.enabled);
     println!("Final expiration: {}", final_policy.expires_at);
     println!("========================================");
+
+    // ========================================================================
+    // SECURITY TEST — WRONG TRANSFER-HOOK PROGRAM
+    //
+    // Create a second Token-2022 mint whose TransferHook.program_id does NOT
+    // point to our compliance program.
+    //
+    // Then directly invoke our Execute instruction.
+    //
+    // Expected:
+    // InvalidTransferHookProgram
+    // ========================================================================
+
+    println!("Starting wrong Transfer-Hook program security test");
+
+    // ------------------------------------------------------------------------
+    // 1. Create second mint
+    // ------------------------------------------------------------------------
+
+    let wrong_hook_mint = Keypair::new();
+    let wrong_hook_mint_pubkey = wrong_hook_mint.pubkey();
+
+    // Deliberately configure this mint with another non-zero address
+    // instead of our compliance program.
+    let wrong_hook_program = Keypair::new();
+    let wrong_hook_program_id = wrong_hook_program.pubkey();
+
+    assert_ne!(wrong_hook_program_id, token2022_compliance::ID);
+
+    assert_ne!(wrong_hook_program_id, anchor_spl::token_2022::ID);
+
+    let create_wrong_hook_mint_ix = create_account(
+        &payer.pubkey(),
+        &wrong_hook_mint_pubkey,
+        mint_rent,
+        mint_size as u64,
+        &anchor_spl::token_2022::ID,
+    );
+
+    let initialize_wrong_transfer_hook_ix = transfer_hook_instruction::initialize(
+        &anchor_spl::token_2022::ID,
+        &wrong_hook_mint_pubkey,
+        Some(mint_authority_pubkey),
+        Some(wrong_hook_program_id),
+    )
+    .expect("failed to build wrong-hook TransferHook initialization");
+
+    let initialize_wrong_mint_ix = initialize_mint2(
+        &anchor_spl::token_2022::ID,
+        &wrong_hook_mint_pubkey,
+        &mint_authority_pubkey,
+        None,
+        6,
+    )
+    .expect("failed to build wrong-hook mint initialization");
+
+    let create_wrong_hook_mint_tx = Transaction::new_signed_with_payer(
+        &[
+            create_wrong_hook_mint_ix,
+            initialize_wrong_transfer_hook_ix,
+            initialize_wrong_mint_ix,
+        ],
+        Some(&payer.pubkey()),
+        &[&payer, &wrong_hook_mint],
+        fresh_blockhash(&mut svm),
+    );
+    svm.send_transaction(create_wrong_hook_mint_tx)
+        .expect("failed to create wrong-hook mint");
+
+    // ------------------------------------------------------------------------
+    // 2. Verify the second mint really points somewhere else
+    // ------------------------------------------------------------------------
+
+    let wrong_hook_mint_account = svm
+        .get_account(&wrong_hook_mint_pubkey)
+        .expect("wrong-hook mint missing");
+
+    let parsed_wrong_hook_mint =
+        StateWithExtensions::<Token2022Mint>::unpack(&wrong_hook_mint_account.data)
+            .expect("failed to parse wrong-hook mint");
+
+    let wrong_transfer_hook = parsed_wrong_hook_mint
+        .get_extension::<TransferHook>()
+        .expect("TransferHook extension missing on wrong-hook mint");
+
+    let configured_wrong_hook: Option<Pubkey> = wrong_transfer_hook.program_id.into();
+
+    assert_eq!(configured_wrong_hook, Some(wrong_hook_program_id));
+
+    assert_ne!(configured_wrong_hook, Some(token2022_compliance::ID));
+
+    println!(
+        "Wrong-hook mint configured with program: {:?}",
+        configured_wrong_hook
+    );
+
+    // ------------------------------------------------------------------------
+    // 3. Create source + destination Token-2022 accounts for second mint
+    // ------------------------------------------------------------------------
+
+    let wrong_source_token = Keypair::new();
+    let wrong_destination_token = Keypair::new();
+
+    let wrong_source_token_pubkey = wrong_source_token.pubkey();
+
+    let wrong_destination_token_pubkey = wrong_destination_token.pubkey();
+
+    let create_wrong_source_ix = create_account(
+        &payer.pubkey(),
+        &wrong_source_token_pubkey,
+        token_account_rent,
+        token_account_size as u64,
+        &anchor_spl::token_2022::ID,
+    );
+
+    let initialize_wrong_source_ix = initialize_account3(
+        &anchor_spl::token_2022::ID,
+        &wrong_source_token_pubkey,
+        &wrong_hook_mint_pubkey,
+        &alice_pubkey,
+    )
+    .expect("failed to initialize wrong-hook source account");
+
+    let create_wrong_destination_ix = create_account(
+        &payer.pubkey(),
+        &wrong_destination_token_pubkey,
+        token_account_rent,
+        token_account_size as u64,
+        &anchor_spl::token_2022::ID,
+    );
+
+    let initialize_wrong_destination_ix = initialize_account3(
+        &anchor_spl::token_2022::ID,
+        &wrong_destination_token_pubkey,
+        &wrong_hook_mint_pubkey,
+        &bob_pubkey,
+    )
+    .expect("failed to initialize wrong-hook destination account");
+
+    let create_wrong_token_accounts_tx = Transaction::new_signed_with_payer(
+        &[
+            create_wrong_source_ix,
+            initialize_wrong_source_ix,
+            create_wrong_destination_ix,
+            initialize_wrong_destination_ix,
+        ],
+        Some(&payer.pubkey()),
+        &[&payer, &wrong_source_token, &wrong_destination_token],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(create_wrong_token_accounts_tx)
+        .expect("failed to create wrong-hook token accounts");
+
+    // ------------------------------------------------------------------------
+    // 4. Create GlobalPolicy PDA for second mint
+    // ------------------------------------------------------------------------
+
+    let (wrong_policy_pda, _) = Pubkey::find_program_address(
+        &[b"policy", wrong_hook_mint_pubkey.as_ref()],
+        &token2022_compliance::ID,
+    );
+
+    let initialize_wrong_policy_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::InitializePolicy {
+            admin: admin_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            global_policy: wrong_policy_pda,
+            token_program: anchor_spl::token_2022::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::InitializePolicy {
+            max_transfer_amount: 100_000_000,
+            daily_transfer_limit: 250_000_000,
+            expires_at: 0,
+        }
+        .data(),
+    };
+
+    let initialize_wrong_policy_tx = Transaction::new_signed_with_payer(
+        &[initialize_wrong_policy_ix],
+        Some(&admin_pubkey),
+        &[&admin],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(initialize_wrong_policy_tx)
+        .expect("failed to initialize wrong-hook policy");
+
+    // ------------------------------------------------------------------------
+    // 5. Create Alice + Bob Authorization PDAs for second mint
+    // ------------------------------------------------------------------------
+
+    let (wrong_alice_auth_pda, _) = Pubkey::find_program_address(
+        &[
+            b"authorization",
+            wrong_hook_mint_pubkey.as_ref(),
+            alice_pubkey.as_ref(),
+        ],
+        &token2022_compliance::ID,
+    );
+
+    let (wrong_bob_auth_pda, _) = Pubkey::find_program_address(
+        &[
+            b"authorization",
+            wrong_hook_mint_pubkey.as_ref(),
+            bob_pubkey.as_ref(),
+        ],
+        &token2022_compliance::ID,
+    );
+
+    let initialize_wrong_alice_auth_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::InitializeAuthorization {
+            admin: admin_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            global_policy: wrong_policy_pda,
+            authorization: wrong_alice_auth_pda,
+            token_program: anchor_spl::token_2022::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::InitializeAuthorization {
+            wallet: alice_pubkey,
+        }
+        .data(),
+    };
+
+    let initialize_wrong_bob_auth_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::InitializeAuthorization {
+            admin: admin_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            global_policy: wrong_policy_pda,
+            authorization: wrong_bob_auth_pda,
+            token_program: anchor_spl::token_2022::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::InitializeAuthorization { wallet: bob_pubkey }
+            .data(),
+    };
+
+    let initialize_wrong_auth_tx = Transaction::new_signed_with_payer(
+        &[initialize_wrong_alice_auth_ix, initialize_wrong_bob_auth_ix],
+        Some(&admin_pubkey),
+        &[&admin],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(initialize_wrong_auth_tx)
+        .expect("failed to initialize wrong-hook authorization accounts");
+
+    // ------------------------------------------------------------------------
+    // 6. Authorize Alice and Bob
+    // ------------------------------------------------------------------------
+
+    let authorize_wrong_alice_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::SetAuthorizationStatus {
+            admin: admin_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            global_policy: wrong_policy_pda,
+            authorization: wrong_alice_auth_pda,
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::SetAuthorizationStatus {
+            new_status: token2022_compliance::state::AuthorizationStatus::Authorized,
+        }
+        .data(),
+    };
+
+    let authorize_wrong_bob_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::SetAuthorizationStatus {
+            admin: admin_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            global_policy: wrong_policy_pda,
+            authorization: wrong_bob_auth_pda,
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::SetAuthorizationStatus {
+            new_status: token2022_compliance::state::AuthorizationStatus::Authorized,
+        }
+        .data(),
+    };
+
+    let authorize_wrong_users_tx = Transaction::new_signed_with_payer(
+        &[authorize_wrong_alice_ix, authorize_wrong_bob_ix],
+        Some(&admin_pubkey),
+        &[&admin],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(authorize_wrong_users_tx)
+        .expect("failed to authorize wrong-hook users");
+
+    // ------------------------------------------------------------------------
+    // 7. Initialize Alice TransferStats for second mint
+    // ------------------------------------------------------------------------
+
+    let (wrong_alice_stats_pda, _) = Pubkey::find_program_address(
+        &[
+            b"stats",
+            wrong_hook_mint_pubkey.as_ref(),
+            alice_pubkey.as_ref(),
+        ],
+        &token2022_compliance::ID,
+    );
+
+    let initialize_wrong_stats_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::InitializeTransferStats {
+            payer: payer.pubkey(),
+            mint: wrong_hook_mint_pubkey,
+            authorization: wrong_alice_auth_pda,
+            transfer_stats: wrong_alice_stats_pda,
+            token_program: anchor_spl::token_2022::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::InitializeTransferStats {
+            wallet: alice_pubkey,
+        }
+        .data(),
+    };
+
+    let initialize_wrong_stats_tx = Transaction::new_signed_with_payer(
+        &[initialize_wrong_stats_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(initialize_wrong_stats_tx)
+        .expect("failed to initialize wrong-hook stats");
+
+    // ------------------------------------------------------------------------
+    // 8. Initialize canonical ExtraAccountMetaList for second mint
+    // ------------------------------------------------------------------------
+
+    let (wrong_eaml_pda, _) = Pubkey::find_program_address(
+        &[b"extra-account-metas", wrong_hook_mint_pubkey.as_ref()],
+        &token2022_compliance::ID,
+    );
+
+    let initialize_wrong_eaml_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::InitializeExtraAccountMetaList {
+            payer: payer.pubkey(),
+            extra_account_meta_list: wrong_eaml_pda,
+            mint: wrong_hook_mint_pubkey,
+            mint_authority: mint_authority_pubkey,
+            token_program: anchor_spl::token_2022::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::InitializeExtraAccountMetaList {}.data(),
+    };
+
+    let initialize_wrong_eaml_tx = Transaction::new_signed_with_payer(
+        &[initialize_wrong_eaml_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &mint_authority],
+        fresh_blockhash(&mut svm),
+    );
+
+    svm.send_transaction(initialize_wrong_eaml_tx)
+        .expect("failed to initialize wrong-hook EAML");
+
+    // ------------------------------------------------------------------------
+    // 9. Directly invoke our compliance Execute instruction
+    //
+    // Because verify_transfer_hook_program() runs BEFORE
+    // verify_is_transferring(), the expected failure is specifically:
+    //
+    // InvalidTransferHookProgram
+    // ------------------------------------------------------------------------
+
+    let direct_wrong_hook_execute_ix = Instruction {
+        program_id: token2022_compliance::ID,
+
+        accounts: token2022_compliance::accounts::ExecuteTransferHook {
+            source_token: wrong_source_token_pubkey,
+            mint: wrong_hook_mint_pubkey,
+            destination_token: wrong_destination_token_pubkey,
+            transfer_authority: alice_pubkey,
+            extra_account_meta_list: wrong_eaml_pda,
+            global_policy: wrong_policy_pda,
+            sender_authorization: wrong_alice_auth_pda,
+            receiver_authorization: wrong_bob_auth_pda,
+            sender_stats: wrong_alice_stats_pda,
+        }
+        .to_account_metas(None),
+
+        data: token2022_compliance::instruction::Execute { amount: 1_000_000 }.data(),
+    };
+
+    let direct_wrong_hook_execute_tx = Transaction::new_signed_with_payer(
+        &[direct_wrong_hook_execute_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        fresh_blockhash(&mut svm),
+    );
+
+    let err = svm
+        .send_transaction(direct_wrong_hook_execute_tx)
+        .expect_err("mint configured with another hook program must be rejected");
+
+    let err_text = format!("{err:?}");
+
+    assert!(
+        err_text.contains("InvalidTransferHookProgram"),
+        "expected InvalidTransferHookProgram, got: {err_text}"
+    );
+
+    println!("Wrong Transfer-Hook program attack rejected");
 }
