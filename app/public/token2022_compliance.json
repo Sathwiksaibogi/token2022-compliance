@@ -1,0 +1,1052 @@
+{
+  "address": "Bzf35ZWCmtpzrYxQRd3y6x73NDHASarXkxK3RmFsmsW6",
+  "metadata": {
+    "name": "token2022_compliance",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "execute",
+      "discriminator": [
+        105,
+        37,
+        101,
+        197,
+        75,
+        251,
+        102,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "source_token"
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "global_policy",
+            "sender_authorization",
+            "receiver_authorization",
+            "sender_stats"
+          ]
+        },
+        {
+          "name": "destination_token"
+        },
+        {
+          "name": "transfer_authority",
+          "docs": [
+            "non-signer account to the Transfer Hook. Transfer authorization has",
+            "already been validated by Token-2022."
+          ]
+        },
+        {
+          "name": "extra_account_meta_list",
+          "docs": [
+            "Its address is verified using the standardized seeds."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "global_policy",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "sender_authorization",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "source_token.owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receiver_authorization",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "destination_token.owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "sender_stats",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "source_token.owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_authorization",
+      "discriminator": [
+        156,
+        237,
+        41,
+        186,
+        121,
+        250,
+        181,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "global_policy",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authorization",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "initialize_extra_account_meta_list",
+      "discriminator": [
+        92,
+        197,
+        174,
+        197,
+        41,
+        124,
+        19,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "extra_account_meta_list",
+          "docs": [
+            "[b\"extra-account-metas\", mint]. Its address is validated by PDA seeds,",
+            "and its TLV data will be initialized manually by this program."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "mint_authority",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_policy",
+      "discriminator": [
+        9,
+        186,
+        86,
+        225,
+        129,
+        162,
+        231,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "global_policy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_transfer_amount",
+          "type": "u64"
+        },
+        {
+          "name": "daily_transfer_limit",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_transfer_stats",
+      "discriminator": [
+        175,
+        164,
+        65,
+        108,
+        252,
+        162,
+        245,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "authorization"
+          ]
+        },
+        {
+          "name": "authorization",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "transfer_stats",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_authorization_status",
+      "discriminator": [
+        190,
+        226,
+        156,
+        92,
+        95,
+        132,
+        197,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "global_policy",
+            "authorization"
+          ]
+        },
+        {
+          "name": "global_policy",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authorization",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "authorization.wallet",
+                "account": "Authorization"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_status",
+          "type": {
+            "defined": {
+              "name": "AuthorizationStatus"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_policy",
+      "discriminator": [
+        212,
+        245,
+        246,
+        7,
+        163,
+        151,
+        18,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "global_policy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdatePolicyArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_transfer_fee",
+      "discriminator": [
+        135,
+        106,
+        57,
+        77,
+        93,
+        247,
+        210,
+        158
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "global_policy"
+          ]
+        },
+        {
+          "name": "global_policy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  108,
+                  105,
+                  99,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": [
+        {
+          "name": "transfer_fee_basis_points",
+          "type": "u16"
+        },
+        {
+          "name": "maximum_fee",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Authorization",
+      "discriminator": [
+        3,
+        68,
+        168,
+        243,
+        195,
+        168,
+        32,
+        75
+      ]
+    },
+    {
+      "name": "GlobalPolicy",
+      "discriminator": [
+        40,
+        227,
+        199,
+        152,
+        197,
+        88,
+        47,
+        104
+      ]
+    },
+    {
+      "name": "TransferStats",
+      "discriminator": [
+        216,
+        255,
+        218,
+        222,
+        181,
+        60,
+        101,
+        31
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidMaxTransferAmount",
+      "msg": "Maximum transfer amount must be greater than zero"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidDailyLimit",
+      "msg": "Daily transfer limit must be at least the maximum transfer amount"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidExpiration",
+      "msg": "Expiration must be zero or a future Unix timestamp"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidTransferHookInvocation",
+      "msg": "Invalid Transfer Hook invocation"
+    },
+    {
+      "code": 6004,
+      "name": "PolicyDisabled",
+      "msg": "Global Policy is not enabled"
+    },
+    {
+      "code": 6005,
+      "name": "PolicyExpired",
+      "msg": "Global Policy has Expired"
+    },
+    {
+      "code": 6006,
+      "name": "SenderNotAuthorized",
+      "msg": "Sender is not Authorized"
+    },
+    {
+      "code": 6007,
+      "name": "SenderBlocked",
+      "msg": "Sender is Blocked"
+    },
+    {
+      "code": 6008,
+      "name": "ReceiverNotAuthorized",
+      "msg": "Receiver is not Authorized"
+    },
+    {
+      "code": 6009,
+      "name": "ReceiverBlocked",
+      "msg": "Receiver is blocked"
+    },
+    {
+      "code": 6010,
+      "name": "MaxTransferAmountExceeded",
+      "msg": "Maximum transfer amount has exceeded"
+    },
+    {
+      "code": 6011,
+      "name": "DailyLimitExceeded",
+      "msg": "Daily transfer limit exceeded"
+    },
+    {
+      "code": 6012,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidTransferHookProgram",
+      "msg": "Mint is not configured to use this compliance transfer hook"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidTransferFeeBasisPoints",
+      "msg": "Transfer fee basis points cannot exceed 10,000"
+    }
+  ],
+  "types": [
+    {
+      "name": "Authorization",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "AuthorizationStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AuthorizationStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Unauthorized"
+          },
+          {
+            "name": "Authorized"
+          },
+          {
+            "name": "Blocked"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalPolicy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "enabled",
+            "type": "bool"
+          },
+          {
+            "name": "max_transfer_amount",
+            "type": "u64"
+          },
+          {
+            "name": "daily_transfer_limit",
+            "type": "u64"
+          },
+          {
+            "name": "policy_version",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransferStats",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "day_index",
+            "type": "i64"
+          },
+          {
+            "name": "amount_today",
+            "type": "u64"
+          },
+          {
+            "name": "total_transferred",
+            "type": "u64"
+          },
+          {
+            "name": "transfer_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdatePolicyArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "enabled",
+            "type": {
+              "option": "bool"
+            }
+          },
+          {
+            "name": "max_transfer_amount",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "daily_transfer_limit",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "expires_at",
+            "type": {
+              "option": "i64"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
